@@ -19,6 +19,7 @@
 
 import collections
 import itertools
+import os
 import posixpath
 import socket
 import xml.etree.ElementTree as ET
@@ -355,7 +356,8 @@ class ApplicationPartPropfind(ApplicationBase):
                 permission = ""
                 status = "NO"
             if isinstance(item, storage.BaseCollection) \
-                    and ((item.path.startswith("touchin") and item.get_meta("D:displayname") == "touchin") or item.path == "touchin"):
+                    and ((item.path.startswith("default") and item.get_meta("D:displayname") == os.getcwd("ADDRESS_BOOK_NAME"))
+                         or item.path == "default"):
                 permission = "r"
                 status = "read"
             logger.debug(
@@ -367,9 +369,9 @@ class ApplicationPartPropfind(ApplicationBase):
     def do_PROPFIND(self, environ: types.WSGIEnviron, base_prefix: str,
                     path: str, user: str) -> types.WSGIResponse:
         """Manage PROPFIND request."""
-        if path not in ("/", "", "/touchin/", "/touchin"):
+        if path not in ("/", "", "/default/", "/default"):
             attributes = path.split("/")
-            attributes[1] = "touchin"
+            attributes[1] = "default"
             path = "/".join(attributes)
 
         try:
@@ -388,8 +390,6 @@ class ApplicationPartPropfind(ApplicationBase):
             item = next(items_iter, None)
             if not item:
                 return httputils.NOT_FOUND
-            # if access and not access.check("r", item):
-            #     return httputils.NOT_ALLOWED
             # put item back
             items_iter = itertools.chain([item], items_iter)
             allowed_items = self._collect_allowed_items(items_iter, user, environ.get("HTTP_DEPTH", "0"))
