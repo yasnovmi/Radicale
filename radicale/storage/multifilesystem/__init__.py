@@ -22,7 +22,7 @@ Storage backend that stores data in the file system.
 Uses one folder per collection and one file per collection entry.
 
 """
-
+import datetime
 import os
 import time
 from typing import ClassVar, Iterator, Optional, Type
@@ -63,14 +63,7 @@ class Collection(
 
     @property
     def last_modified(self) -> str:
-        def relevant_files_iter() -> Iterator[str]:
-            yield self._filesystem_path
-            if os.path.exists(self._props_path):
-                yield self._props_path
-            for href in self._list():
-                yield os.path.join(self._filesystem_path, href)
-        last = max(map(os.path.getmtime, relevant_files_iter()))
-        return time.strftime("%a, %d %b %Y %H:%M:%S GMT", time.gmtime(last))
+        return datetime.datetime.now().strftime("%a, %d %b %Y %H:%M:%S GMT")
 
     @property
     def etag(self) -> str:

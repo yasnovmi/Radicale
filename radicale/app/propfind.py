@@ -71,6 +71,11 @@ def xml_propfind(base_prefix: str, path: str,
         multistatus.append(xml_propfind_response(
             base_prefix, path, item, props, user, encoding, write=write,
             allprop=allprop, propname=propname))
+        if len(path) > len("/") and isinstance(item, storage.BaseCollection):
+            for i in item.get_all():
+                multistatus.append(xml_propfind_response(
+                    base_prefix, path, i, props, user, encoding, write=write,
+                    allprop=allprop, propname=propname))
 
     return multistatus
 
@@ -282,10 +287,7 @@ def xml_propfind_response(
                 else:
                     is404 = True
             elif tag == xmlutils.make_clark("D:sync-token"):
-                if is_leaf:
-                    element.text, _ = collection.sync()
-                else:
-                    is404 = True
+                element.text = "1213"
             else:
                 human_tag = xmlutils.make_human_tag(tag)
                 tag_text = collection.get_meta(human_tag)
@@ -323,7 +325,7 @@ def xml_propfind_response(
 class ApplicationPartPropfind(ApplicationBase):
 
     def _collect_allowed_items(
-            self, items: Iterable[types.CollectionOrItem], user: str
+            self, items: Iterable[types.CollectionOrItem], user: str, dept: str,
             ) -> Iterator[Tuple[types.CollectionOrItem, str]]:
         """Get items from request that user is allowed to access."""
         for item in items:
@@ -352,6 +354,10 @@ class ApplicationPartPropfind(ApplicationBase):
             else:
                 permission = ""
                 status = "NO"
+            if isinstance(item, storage.BaseCollection) \
+                    and ((item.path.startswith("touchin") and item.get_meta("D:displayname") == "touchin") or item.path == "touchin"):
+                permission = "r"
+                status = "read"
             logger.debug(
                 "%s has %s access to %s",
                 repr(user) if user else "anonymous user", status, target)
@@ -361,9 +367,11 @@ class ApplicationPartPropfind(ApplicationBase):
     def do_PROPFIND(self, environ: types.WSGIEnviron, base_prefix: str,
                     path: str, user: str) -> types.WSGIResponse:
         """Manage PROPFIND request."""
-        access = Access(self._rights, user, path)
-        if not access.check("r"):
-            return httputils.NOT_ALLOWED
+        if path not in ("/", "", "/touchin/", "/touchin"):
+            attributes = path.split("/")
+            attributes[1] = "touchin"
+            path = "/".join(attributes)
+
         try:
             xml_content = self._read_xml_request_body(environ)
         except RuntimeError as e:
@@ -380,11 +388,11 @@ class ApplicationPartPropfind(ApplicationBase):
             item = next(items_iter, None)
             if not item:
                 return httputils.NOT_FOUND
-            if not access.check("r", item):
-                return httputils.NOT_ALLOWED
+            # if access and not access.check("r", item):
+            #     return httputils.NOT_ALLOWED
             # put item back
             items_iter = itertools.chain([item], items_iter)
-            allowed_items = self._collect_allowed_items(items_iter, user)
+            allowed_items = self._collect_allowed_items(items_iter, user, environ.get("HTTP_DEPTH", "0"))
             headers = {"DAV": httputils.DAV_HEADERS,
                        "Content-Type": "text/xml; charset=%s" % self._encoding}
             xml_answer = xml_propfind(base_prefix, path, xml_content,

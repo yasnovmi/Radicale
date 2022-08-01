@@ -18,3 +18,5 @@ Radicale is a small but powerful CalDAV (calendars, to-do lists) and CardDAV
 
 For the complete documentation, please visit
 [Radicale master Documentation](https://radicale.org/master.html).
+
+This fork using LDAP for sync CardDAV contacts and check LDAP authorization with this plugin [radicale3-auth-ldap.](https://github.com/jdupouy/radicale3-auth-ldap)

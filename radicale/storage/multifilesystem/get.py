@@ -19,8 +19,12 @@
 import os
 import sys
 import time
+from datetime import datetime
+from dateutil.parser import parse
+
 from typing import Iterable, Iterator, Optional, Tuple
 
+from radicale.ldap import LdapService
 import radicale.item as radicale_item
 from radicale import pathutils
 from radicale.log import logger
@@ -32,7 +36,6 @@ from radicale.storage.multifilesystem.lock import CollectionPartLock
 
 class CollectionPartGet(CollectionPartCache, CollectionPartLock,
                         CollectionBase):
-
     _item_cache_cleaned: bool
 
     def __init__(self, storage_: "multifilesystem.Storage", path: str,
@@ -140,9 +143,41 @@ class CollectionPartGet(CollectionPartCache, CollectionPartLock,
                 yield (href, self._get(href, verify_href=False))
 
     def get_all(self) -> Iterator[radicale_item.Item]:
-        for href in self._list():
-            # We don't need to check for collissions, because the file names
-            # are from os.listdir.
-            item = self._get(href, verify_href=False)
-            if item is not None:
-                yield item
+
+        for ldap_user in LdapService().sync():
+            if not ldap_user.ruSn and not ldap_user.ruGivenName:
+                continue
+
+            if ldap_user.birthdate:
+                birthdate = parse(ldap_user.birthdate).strftime("%Y-%m-%d")
+            else:
+                birthdate = "-"
+
+            vcard_text = "\n".join(("BEGIN:VCARD",
+                                   "VERSION:3.0",
+                                   f"UID:{ldap_user.uid}",
+                                   f"EMAIL;TYPE=INTERNET:{ldap_user.mail or '-'}",
+                                   f"FN:{ldap_user.ruGivenName or ''} {ldap_user.ruSn or ''}",
+                                   f"REV:{ldap_user.modifyTimestamp.strftime('%Y-%m-%dT%H:%M:%S.%fZ')}",
+                                   f"N:{ldap_user.ruSn or ''};{ldap_user.ruGivenName or ''};;;",
+                                   f"ROLE:{ldap_user.title or '-'}",
+                                   f"TEL;TYPE=WORK,MSG:{ldap_user.mobile or '-'}",
+                                   f"BDAY:{birthdate}",
+                                   f"IMPP;X-SERVICE-TYPE=Skype;TYPE=WORK:skype:{ldap_user.skype or '-'}",
+                                   f"IMPP;X-SERVICE-TYPE=Telegram;TYPE=WORK:telegram:{ldap_user.telegram or '-'}",
+                                   f"END:VCARD",
+                                   ))
+
+            item = radicale_item.Item(
+                collection_path=self.path,
+                collection=self,
+                vobject_item=None,
+                href=f"{ldap_user.uid}.vcf",
+                last_modified=ldap_user.modifyTimestamp.strftime("%a, %d %b %Y %H:%M:%S GMT"),
+                text=vcard_text,
+                etag=radicale_item.get_etag(vcard_text),
+                uid=ldap_user.uid,
+                name="VCARD",
+                component_name="VCARD",
+            )
+            yield item

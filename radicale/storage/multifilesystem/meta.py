@@ -33,7 +33,7 @@ class CollectionPartMeta(CollectionBase):
     def __init__(self, storage_: "multifilesystem.Storage", path: str,
                  filesystem_path: Optional[str] = None) -> None:
         super().__init__(storage_, path, filesystem_path)
-        self._meta_cache = None
+        self._meta_cache = {}
         self._props_path = os.path.join(
             self._filesystem_path, ".Radicale.props")
 
@@ -45,22 +45,8 @@ class CollectionPartMeta(CollectionBase):
 
     def get_meta(self, key: Optional[str] = None) -> Union[Mapping[str, str],
                                                            Optional[str]]:
-        # reuse cached value if the storage is read-only
-        if self._storage._lock.locked == "w" or self._meta_cache is None:
-            try:
-                try:
-                    with open(self._props_path, encoding=self._encoding) as f:
-                        temp_meta = json.load(f)
-                except FileNotFoundError:
-                    temp_meta = {}
-                self._meta_cache = radicale_item.check_and_sanitize_props(
-                    temp_meta)
-            except ValueError as e:
-                raise RuntimeError("Failed to load properties of collection "
-                                   "%r: %s" % (self.path, e)) from e
         return self._meta_cache if key is None else self._meta_cache.get(key)
 
     def set_meta(self, props: Mapping[str, str]) -> None:
-        with self._atomic_write(self._props_path, "w") as fo:
-            f = cast(TextIO, fo)
-            json.dump(props, f, sort_keys=True)
+        self._meta_cache = dict(self._meta_cache, **props)
+

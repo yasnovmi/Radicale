@@ -5,13 +5,19 @@ FROM python:3-alpine
 # Version of Radicale (e.g. v3)
 ARG VERSION=master
 # Persistent storage for data
-VOLUME /var/lib/radicale
+COPY radicale ./radicale
+COPY radicale3-auth-ldap ./radicale3-auth-ldap
+COPY config ./config
+COPY requirements.txt ./requirements.txt
+COPY main.py ./main.py
+
 # TCP port of Radicale
 EXPOSE 5232
-# Run Radicale
-CMD ["radicale", "--hosts", "0.0.0.0:5232"]
 
 RUN apk add --no-cache ca-certificates openssl \
  && apk add --no-cache --virtual .build-deps gcc libffi-dev musl-dev \
- && pip install --no-cache-dir "Radicale[bcrypt] @ https://github.com/Kozea/Radicale/archive/${VERSION}.tar.gz" \
- && apk del .build-deps
+    && pip install "./radicale3-auth-ldap"
+
+RUN pip3 install -r requirements.txt
+
+CMD ["python", "main.py", "--config", "./config", "--debug"]

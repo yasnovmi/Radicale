@@ -39,66 +39,26 @@ class StoragePartDiscover(StorageBase):
                 Callable[[str, Optional[str]], ContextManager[None]]] = None
             ) -> Iterator[types.CollectionOrItem]:
         # assert isinstance(self, multifilesystem.Storage)
-        if child_context_manager is None:
-            child_context_manager = _null_child_context_manager
-        # Path should already be sanitized
-        sane_path = pathutils.strip_path(path)
-        attributes = sane_path.split("/") if sane_path else []
 
-        folder = self._get_collection_root_folder()
-        # Create the root collection
-        self._makedirs_synced(folder)
-        try:
-            filesystem_path = pathutils.path_to_filesystem(folder, sane_path)
-        except ValueError as e:
-            # Path is unsafe
-            logger.debug("Unsafe path %r requested from storage: %s",
-                         sane_path, e, exc_info=True)
-            return
-
-        # Check if the path exists and if it leads to a collection or an item
-        href: Optional[str]
-        if not os.path.isdir(filesystem_path):
-            if attributes and os.path.isfile(filesystem_path):
-                href = attributes.pop()
-            else:
-                return
-        else:
-            href = None
-
-        sane_path = "/".join(attributes)
-        collection = self._collection_class(
-            cast(multifilesystem.Storage, self),
-            pathutils.unstrip_path(sane_path, True))
-
-        if href:
-            item = collection._get(href)
-            if item is not None:
-                yield item
-            return
+        collection = multifilesystem.Collection(
+            storage_=cast(multifilesystem.Storage, self),
+            path="/default/",
+        )
 
         yield collection
 
         if depth == "0":
             return
 
-        for href in collection._list():
-            with child_context_manager(sane_path, href):
-                item = collection._get(href)
-                if item is not None:
-                    yield item
+        address_book = multifilesystem.Collection(
+            storage_=cast(multifilesystem.Storage, self),
+            path="/default/address_book.vcf",
+        )
+        address_book.set_meta(
+            {
+                "D:displayname": os.getenv("ADDRESS_BOOK_NAME", "default"),
+                "tag": "VADDRESSBOOK"
+             }
+        )
 
-        for entry in os.scandir(filesystem_path):
-            if not entry.is_dir():
-                continue
-            href = entry.name
-            if not pathutils.is_safe_filesystem_path_component(href):
-                if not href.startswith(".Radicale"):
-                    logger.debug("Skipping collection %r in %r",
-                                 href, sane_path)
-                continue
-            sane_child_path = posixpath.join(sane_path, href)
-            child_path = pathutils.unstrip_path(sane_child_path, True)
-            with child_context_manager(sane_child_path, None):
-                yield self._collection_class(
-                    cast(multifilesystem.Storage, self), child_path)
+        yield address_book
